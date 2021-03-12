@@ -205,7 +205,7 @@ Resources:
       LaunchType: EC2
       NetworkConfiguration: 
         AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
           Subnets:
             - !Ref SubnetA
             - !Ref SubnetB
