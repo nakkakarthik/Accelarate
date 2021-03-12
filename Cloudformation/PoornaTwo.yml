@@ -42,6 +42,7 @@ Parameters:
   Ec2KeyPairName:
     Description: name of ec2 key pair to be used
     Type: String
+    Default: ec2-key
 Resources:
   ECSCluster:
     Type: 'AWS::ECS::Cluster'
