@@ -215,7 +215,7 @@ Resources:
         - ContainerName: !Join ['-', [!Ref Stage, !Ref 'AWS::AccountId', 'Container']]
           ContainerPort: !Ref ContainerPort
           TargetGroupArn: !Ref TargetGroup
-	ECSAutoScalingGroup:
+   ECSAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier:
@@ -249,8 +249,3 @@ Resources:
     Properties:
       Path: /
       Roles: [ 'ecsInstanceRole' ]
-		  
-		  
-		  
-
-  
