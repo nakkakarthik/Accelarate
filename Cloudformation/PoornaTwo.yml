@@ -3,13 +3,13 @@ Description: The CloudFormation template for the Fargate ECS Cluster.
 Mappings:
   AWSRegionToAMI:
     us-east-2:
-      AMI: ami-0a0c6574ce16ce87a
+      AMI: ami-02ef98ccecbf47e86
     us-east-1:
-      AMI: ami-07eb698ce660402d2
+      AMI: ami-0ec7896dee795dfa9
     us-west-2:
-      AMI: ami-09568291a9d6c804c
+      AMI: ami-006d48b829793b507
     us-west-1:
-      AMI: ami-04c22ba97a0c063c4
+      AMI: ami-0c95b81c98a196de2
     eu-west-3:
       AMI: ami-0a0948de946510ec0
     eu-west-2:
