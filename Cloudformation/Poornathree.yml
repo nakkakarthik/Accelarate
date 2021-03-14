@@ -193,7 +193,7 @@ Resources:
         - - !Ref Stage
           - !Ref 'AWS::AccountId'
           - LoadBalancerSecurityGroup
-      VpcId: !Ref VPC
+      VpcId: !Ref PubPrivateVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -212,8 +212,8 @@ Resources:
       SecurityGroups:
         - !Ref LoadBalancerSecurityGroup
       Subnets:
-        - !Ref SubnetA
-        - !Ref SubnetB
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
       Type: application
   TargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
@@ -225,7 +225,7 @@ Resources:
           - TargetGroup
       Port: 80
       Protocol: HTTP
-      VpcId: !Ref VPC
+      VpcId: !Ref PubPrivateVPC
   LoadBalancerListener:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
