@@ -1,0 +1,414 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  The stack for creation of pre requisite aws resources for running actual KSM
+  infra
+Mappings:
+  AWSRegionToAMI:
+    us-east-2:
+      AMI: ami-0a0c6574ce16ce87a
+    us-east-1:
+      AMI: ami-07eb698ce660402d2
+    us-west-2:
+      AMI: ami-09568291a9d6c804c
+    us-west-1:
+      AMI: ami-04c22ba97a0c063c4
+    eu-west-3:
+      AMI: ami-0a0948de946510ec0
+    eu-west-2:
+      AMI: ami-0cb31bf24b130a0f9
+    eu-west-1:
+      AMI: ami-066826c6a40879d75
+    eu-central-1:
+      AMI: ami-0b9fee3a2d0596ed1
+    ap-northeast-2:
+      AMI: ami-0b52e57bed048ca48
+    ap-northeast-1:
+      AMI: ami-0edf19001c48838c7
+    ap-southeast-2:
+      AMI: ami-08c26730c8ee004fa
+    ap-southeast-1:
+      AMI: ami-08d4fe232c67b81b8
+    ca-central-1:
+      AMI: ami-055750f063052ec55
+    ap-south-1:
+      AMI: ami-05f009513cd58ac90
+    sa-east-1:
+      AMI: ami-0ada25501ac1375b3
+Parameters:
+  KinesisStreamManagerEnvironment:
+    Description: Specifies the environment of the kinesis stream management micro-service
+    Default: KSMEcs
+    Type: String
+  repositoryName:
+    Type: String
+    Default: com.niceincontact.telemetry/kinesis-stream-mgmt
+    AllowedValues:
+      - com.niceincontact.telemetry/kinesis-stream-mgmt
+  Ec2KeyPairName:
+    Description: name of ec2 key pair to be used
+    Type: String
+Resources:
+  PubPrivateVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 172.31.0.0/16
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      AvailabilityZone: us-east-2a
+      CidrBlock: 172.31.1.0/24
+      MapPublicIpOnLaunch: true
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      AvailabilityZone: us-east-2b
+      CidrBlock: 172.31.2.0/24
+      MapPublicIpOnLaunch: true
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      AvailabilityZone: us-east-2a
+      CidrBlock: 172.31.3.0/24
+      MapPublicIpOnLaunch: false
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      AvailabilityZone: us-east-2b
+      CidrBlock: 172.31.4.0/24
+      MapPublicIpOnLaunch: false
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join 
+            - _
+            - - !Ref 'AWS::StackName'
+        - Key: Network
+          Value: Public
+  GatewayToInternet:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      Tags:
+        - Key: Network
+          Value: Public
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+  NatGateway:
+    Type: 'AWS::EC2::NatGateway'
+    DependsOn: NatPublicIP
+    Properties:
+      AllocationId: !GetAtt NatPublicIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+  NatPublicIP:
+    Type: 'AWS::EC2::EIP'
+    DependsOn: PubPrivateVPC
+    Properties:
+      Domain: vpc
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      Tags:
+        - Key: Network
+          Value: Private
+  PrivateRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+  PrivateSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+  PrivateSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+  MyRepository:
+    Type: 'AWS::ECR::Repository'
+    Properties:
+      RepositoryName: !Ref repositoryName
+      RepositoryPolicyText:
+        Version: 2008-10-17
+        Statement:
+          - Sid: AllowPull
+            Effect: Allow
+            Principal:
+              AWS:
+                - 'arn:aws:iam::934137132601:root'
+                - 'arn:aws:iam::946153222386:root'
+                - 'arn:aws:iam::918987959928:root'
+            Action:
+              - 'ecr:GetDownloadUrlForLayer'
+              - 'ecr:BatchGetImage'
+              - 'ecr:BatchCheckLayerAvailability'
+  ECSHostSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      GroupDescription: Access to the ECS hosts and the tasks/containers that run on them
+      SecurityGroupIngress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: ECSHostSecurityGroup
+        - Key: Cluster
+          Value: Global
+        - Key: DeviceType
+          Value: Ec2SecurityGroup
+        - Key: Owner
+          Value: telemetry_team
+        - Key: Product
+          Value: Kinesis Stream Manager
+        - Key: 'incontact:owner'
+          Value: telemetry_team
+        - Key: 'incontact:resource-name'
+          Value: !Join 
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - ECSHostSecurityGroup
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Join 
+        - '-'
+        - - !Ref KinesisStreamManagerEnvironment
+          - ECSCluster
+  ECSAutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      LaunchConfigurationName: !Ref ECSLaunchConfiguration
+      MinSize: '2'
+      MaxSize: '2'
+      DesiredCapacity: '2'
+      Tags:
+        - Key: Name
+          Value: ECSAutoScalingGroup
+          PropagateAtLaunch: 'true'
+        - Key: Cluster
+          Value: Global
+          PropagateAtLaunch: 'true'
+        - Key: DeviceType
+          Value: AutoScalingGroup
+          PropagateAtLaunch: 'true'
+        - Key: Owner
+          Value: telemetry_team
+          PropagateAtLaunch: 'true'
+        - Key: Product
+          Value: Kinesis Stream Manager
+          PropagateAtLaunch: 'true'
+        - Key: 'incontact:owner'
+          Value: telemetry_team
+          PropagateAtLaunch: 'true'
+        - Key: 'incontact:resource-name'
+          Value: !Join 
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - ECSAutoScalingGroup
+          PropagateAtLaunch: 'true'
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+        PauseTime: PT15M
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+        WaitOnResourceSignals: false
+  ECSLaunchConfiguration:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      ImageId: !FindInMap 
+        - AWSRegionToAMI
+        - !Ref 'AWS::Region'
+        - AMI
+      InstanceType: t2.medium
+      SecurityGroups:
+        - !Ref ECSHostSecurityGroup
+      KeyName: !Ref Ec2KeyPairName
+      IamInstanceProfile: !Ref ECSInstanceProfile
+      UserData: !Base64 
+        'Fn::Join':
+          - ''
+          - - |
+              #!/bin/bash -xe
+            - echo ECS_CLUSTER=
+            - !Ref ECSCluster
+            - |2
+               >> /etc/ecs/ecs.config
+            - |
+              yum install -y aws-cfn-bootstrap
+            - '/opt/aws/bin/cfn-signal -e $? '
+            - '         --stack '
+            - !Ref 'AWS::StackName'
+            - '         --resource ECSAutoScalingGroup '
+            - '         --region '
+            - !Ref 'AWS::Region'
+            - |+
+
+    Metadata:
+      'AWS::CloudFormation::Init':
+        config:
+          commands:
+            01_add_instance_to_cluster:
+              command: !Sub 'echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config'
+          files:
+            /etc/cfn/cfn-hup.conf:
+              mode: '000700'
+              owner: root
+              group: root
+              content: !Join 
+                - ''
+                - - |
+                    [main]
+                  - stack=
+                  - !Ref 'AWS::StackName'
+                  - |+
+
+                  - region=
+                  - !Ref 'AWS::Region'
+                  - |+
+
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              mode: '000700'
+              owner: root
+              group: root
+              content: !Join 
+                - ''
+                - - |
+                    [cfn-auto-reloader-hook]
+                  - |
+                    triggers=post.update
+                  - >
+                    path=Resources.ECSLaunchConfiguration.Metadata.AWS::CloudFormation::Init
+                  - 'action=/opt/aws/bin/cfn-init -v '
+                  - '         --stack '
+                  - !Ref 'AWS::StackName'
+                  - '         --resource ECSLaunchConfiguration '
+                  - '         --region '
+                  - !Ref 'AWS::Region'
+                  - |+
+
+                  - |
+                    runas=root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+  ECSRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: /
+      RoleName: !Join 
+        - '-'
+        - - !Ref KinesisStreamManagerEnvironment
+          - ECSRole
+          - !Ref 'AWS::Region'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+      Policies:
+        - PolicyName: KSM-ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:CreateCluster'
+                  - 'ecs:DeregisterContainerInstance'
+                  - 'ecs:DiscoverPollEndpoint'
+                  - 'ecs:Poll'
+                  - 'ecs:RegisterContainerInstance'
+                  - 'ecs:StartTelemetrySession'
+                  - 'ecs:Submit*'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:BatchGetImage'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:GetAuthorizationToken'
+                Resource: '*'
+  ECSInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ECSRole
+Outputs:
+  ClusterName:
+    Description: A reference to the ECS cluster
+    Value: !Ref ECSCluster
+  ClusterArn:
+    Description: A reference to the ECS cluster
+    Value: !GetAtt 
+      - ECSCluster
+      - Arn
+  VpcId:
+    Description: A reference to the ECS cluster
+    Value: !Ref PubPrivateVPC
+  subnet1:
+    Description: A reference to the ECS cluster
+    Value: !Ref PrivateSubnet1
+  subnet2:
+    Description: A reference to the ECS cluster
+    Value: !Ref PrivateSubnet2
+  EcrUri:
+    Value: !Join 
+      - ''
+      - - !Ref 'AWS::AccountId'
+        - .dkr.ecr.
+        - !Ref 'AWS::Region'
+        - .amazonaws.com/
+        - !Ref repositoryName
