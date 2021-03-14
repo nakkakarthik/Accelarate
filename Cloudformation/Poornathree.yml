@@ -35,16 +35,18 @@ Mappings:
     sa-east-1:
       AMI: ami-0ada25501ac1375b3
 Parameters:
-  Stage:
+  KinesisStreamManagerEnvironment:
+    Description: Specifies the environment of the kinesis stream management micro-service
+    Default: KSMEcs
     Type: String
-  ContainerPort:
-    Type: Number
-  ImageURI:
+  repositoryName:
     Type: String
+    Default: com.niceincontact.telemetry/kinesis-stream-mgmt
+    AllowedValues:
+      - com.niceincontact.telemetry/kinesis-stream-mgmt
   Ec2KeyPairName:
     Description: name of ec2 key pair to be used
     Type: String
-    Default: ec2-key
 Resources:
   PubPrivateVPC:
     Type: 'AWS::EC2::VPC'
@@ -151,111 +153,24 @@ Resources:
     Properties:
       SubnetId: !Ref PrivateSubnet2
       RouteTableId: !Ref PrivateRouteTable
-  ExecutionRole:
-    Type: 'AWS::IAM::Role'
+  MyRepository:
+    Type: 'AWS::ECR::Repository'
     Properties:
-      RoleName: !Join 
-        - '-'
-        - - !Ref Stage
-          - !Ref 'AWS::AccountId'
-          - ExecutionRole
-      AssumeRolePolicyDocument:
+      RepositoryName: !Ref repositoryName
+      RepositoryPolicyText:
+        Version: 2008-10-17
         Statement:
-          - Effect: Allow
+          - Sid: AllowPull
+            Effect: Allow
             Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: 'sts:AssumeRole'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
-  TaskDefinition:
-    Type: 'AWS::ECS::TaskDefinition'
-    Properties:
-      Memory: 1024
-      Cpu: 512
-      NetworkMode: bridge
-      TaskRoleArn: !Ref ExecutionRole
-      ExecutionRoleArn: !Ref ExecutionRole
-      ContainerDefinitions:
-        - Name: !Join 
-            - '-'
-            - - !Ref Stage
-              - !Ref 'AWS::AccountId'
-              - Container
-          Image: !Ref ImageURI
-          PortMappings:
-            - ContainerPort: !Ref ContainerPort
-              HostPort: !Ref ContainerPort
-  LoadBalancerSecurityGroup:
-    Type: 'AWS::EC2::SecurityGroup'
-    Properties:
-      GroupDescription: !Join 
-        - '-'
-        - - !Ref Stage
-          - !Ref 'AWS::AccountId'
-          - LoadBalancerSecurityGroup
-      VpcId: !Ref PubPrivateVPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-  LoadBalancer:
-    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
-    Properties:
-      IpAddressType: ipv4
-      Name: !Join 
-        - '-'
-        - - !Ref Stage
-          - !Ref 'AWS::AccountId'
-          - LoadBalancer
-      Scheme: internet-facing
-      SecurityGroups:
-        - !Ref LoadBalancerSecurityGroup
-      Subnets:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      Type: application
-  TargetGroup:
-    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
-    Properties:
-      Name: !Join 
-        - '-'
-        - - !Ref Stage
-          - !Ref 'AWS::AccountId'
-          - TargetGroup
-      Port: 80
-      Protocol: HTTP
-      VpcId: !Ref PubPrivateVPC
-  LoadBalancerListener:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-        - TargetGroupArn: !Ref TargetGroup
-          Type: forward
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 80
-      Protocol: HTTP
-  ECSService:
-    Type: 'AWS::ECS::Service'
-    DependsOn: LoadBalancerListener
-    Properties:
-      ServiceName: !Join 
-        - '-'
-        - - !Ref Stage
-          - !Ref 'AWS::AccountId'
-          - ECSService
-      Cluster: !Ref ECSCluster
-      TaskDefinition: !Ref TaskDefinition
-      DesiredCount: 2
-      LaunchType: EC2
-      LoadBalancers:
-        - ContainerName: !Join 
-            - '-'
-            - - !Ref Stage
-              - !Ref 'AWS::AccountId'
-              - Container
-          ContainerPort: !Ref ContainerPort
-          TargetGroupArn: !Ref TargetGroup
+              AWS:
+                - 'arn:aws:iam::934137132601:root'
+                - 'arn:aws:iam::946153222386:root'
+                - 'arn:aws:iam::918987959928:root'
+            Action:
+              - 'ecr:GetDownloadUrlForLayer'
+              - 'ecr:BatchGetImage'
+              - 'ecr:BatchCheckLayerAvailability'
   ECSHostSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -268,16 +183,37 @@ Resources:
           FromPort: '22'
           ToPort: '22'
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
       SecurityGroupEgress:
         - IpProtocol: '-1'
           CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: ECSHostSecurityGroup
+        - Key: Cluster
+          Value: Global
+        - Key: DeviceType
+          Value: Ec2SecurityGroup
+        - Key: Owner
+          Value: telemetry_team
+        - Key: Product
+          Value: Kinesis Stream Manager
+        - Key: 'incontact:owner'
+          Value: telemetry_team
+        - Key: 'incontact:resource-name'
+          Value: !Join 
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - ECSHostSecurityGroup
   ECSCluster:
     Type: 'AWS::ECS::Cluster'
     Properties:
       ClusterName: !Join 
         - '-'
-        - - !Ref Stage
-          - !Ref 'AWS::AccountId'
+        - - !Ref KinesisStreamManagerEnvironment
           - ECSCluster
   ECSAutoScalingGroup:
     Type: 'AWS::AutoScaling::AutoScalingGroup'
@@ -419,7 +355,7 @@ Resources:
       Path: /
       RoleName: !Join 
         - '-'
-        - - !Ref Stage
+        - - !Ref KinesisStreamManagerEnvironment
           - ECSRole
           - !Ref 'AWS::Region'
       AssumeRolePolicyDocument:
@@ -479,4 +415,4 @@ Outputs:
         - .dkr.ecr.
         - !Ref 'AWS::Region'
         - .amazonaws.com/
-        - !Ref ImageURI
+        - !Ref repositoryName
