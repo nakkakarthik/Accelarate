@@ -47,6 +47,7 @@ Parameters:
   Ec2KeyPairName:
     Description: name of ec2 key pair to be used
     Type: String
+    Default: ec2-key
 Resources:
   PubPrivateVPC:
     Type: 'AWS::EC2::VPC'
